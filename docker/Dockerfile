@@ -1,55 +1,55 @@
-FROM php:8.2-fpm
-
-# Arguments defined in docker-compose.yml
-ARG user
-ARG uid
+FROM dunglas/frankenphp:latest-php8.2-alpine AS base
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     git \
     curl \
     libpng-dev \
-    libonig-dev \
     libxml2-dev \
     zip \
     unzip \
-    libzip-dev \
-    libpq-dev \
-    libjpeg62-turbo-dev \
-    libfreetype6-dev \
-    libgd-dev \
-    nodejs \
-    npm
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+    oniguruma-dev \
+    icu-dev \
+    linux-headers \
+    openssl-dev
 
 # Install PHP extensions
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+RUN docker-php-ext-install \
+    pdo_mysql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    intl
 
-# Get latest Composer
+# Install MongoDB PHP extension with SSL support and other extensions
+RUN apk add --no-cache $PHPIZE_DEPS \
+    && pecl install mongodb redis \
+    && docker-php-ext-enable mongodb redis
+
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Create system user to run Composer and Artisan Commands
-RUN useradd -G www-data,root -u $uid -d /home/$user $user
-RUN mkdir -p /home/$user/.composer && \
-    chown -R $user:$user /home/$user
+# Final stage
+FROM base AS final
 
 # Set working directory
-WORKDIR /var/www
+WORKDIR /app
 
-COPY . /var/www
+# Copy application code
+# This will be done by docker-compose volume mount in dev, 
+# but good for production builds if not mounting.
+# COPY . /app
 
-# Copy existing application directory permissions
-COPY --chown=$user:$user . /var/www
+# Copy startup script
+COPY docker/app/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
 
-# Change current user to non-root
-USER $user
+# Expose ports (Octane, Octane Admin)
+# Port 443 is for HTTPS (if you configure it in FrankenPHP)
+# Port 9003 is not used by the start.sh script provided
+EXPOSE 80 443 2019
 
-# Install Dependencies
-RUN composer install --optimize-autoloader --no-dev --no-interaction --no-plugins --no-scripts
-# RUN npm install && npm run build
-
-# Expose port 9000 and start php-fpm server
-EXPOSE 9000
-CMD ["php-fpm"] 
+# Start both services using the startup script
+CMD ["/usr/local/bin/start.sh"]

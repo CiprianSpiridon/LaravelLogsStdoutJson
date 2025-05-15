@@ -1,70 +1,67 @@
+version: '3.8'
 services:
-  # Application Service (PHP-FPM)
+  # Application Service (FrankenPHP with Octane)
   app:
     build:
-      args:
-        user: sail
-        uid: 1000 # Replace with your local user ID if necessary
       context: .
       dockerfile: ./docker/Dockerfile
-    image: laravel-app
-    container_name: laravel_app
-    restart: unless-stopped
-    tty: true
-    environment:
-      SERVICE_NAME: app
-      SERVICE_TAGS: dev
-    working_dir: /var/www
-    volumes:
-      - ./:/var/www
-      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini # Optional: custom php.ini settings
-    networks:
-      - app-network
-    # depends_on:
-      # - db # If you have a database service
-      # - redis # If you use Redis
-
-  # Web Server Service (Nginx)
-  nginx:
-    image: nginx:alpine
-    container_name: laravel_nginx
+    image: laravel-frankenphp-app
+    container_name: laravel_app_frankenphp
     restart: unless-stopped
     tty: true
     ports:
-      - "8000:80"
-      - "5173:5173" # For Vite, if you're using it
+      - "8000:80"      # FrankenPHP HTTP
+      - "44300:443"    # FrankenPHP HTTPS (if enabled in FrankenPHP Caddyfile)
+      - "2019:2019"    # Octane Admin Port
     volumes:
-      - ./:/var/www
-      - ./docker/nginx/conf.d/:/etc/nginx/conf.d/
+      - ./:/app
+      # Mount PHP INI settings to the FrankenPHP container's PHP config directory
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/99-custom.ini
+      # The new Dockerfile doesn't use local.ini directly in the same way.
+      # PHP settings for FrankenPHP are often managed via a Caddyfile or php.ini within the image.
+      # For now, removing this volume. If custom php.ini is needed, it should be copied into the image or mounted appropriately.
+      # - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini 
     networks:
       - app-network
-    depends_on:
-      - app
+    # depends_on:
+    #   db: # App depends on the database service
+    #     condition: service_healthy # Wait for DB to be healthy
+    # environment: # .env file will be used by Laravel/Octane inside the container
+      # SERVICE_NAME: app
+      # SERVICE_TAGS: dev
+    environment:
+      OCTANE_LOG_FORMAT: json
+      CADDY_SERVER_LOGGER: json
+      CADDY_SERVER_LOG_LEVEL: debug
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: debug
+    cap_add:
+      - SYS_NICE # For Horizon supervisor or for Octane to renice workers
 
-  # Database Service (MySQL example)
-  # db:
-  #   image: mysql:8.0
-  #   container_name: laravel_db
-  #   restart: unless-stopped
-  #   tty: true
-  #   ports:
-  #     - "3306:3306"
-  #   environment:
-  #     MYSQL_DATABASE: ${DB_DATABASE:-laravel}
-  #     MYSQL_USER: ${DB_USERNAME:-sail}
-  #     MYSQL_PASSWORD: ${DB_PASSWORD:-password}
-  #     MYSQL_ROOT_PASSWORD: "${DB_PASSWORD:-password}"
-  #     SERVICE_TAGS: dev
-  #     SERVICE_NAME: mysql
-  #   volumes:
-  #     - dbdata:/var/lib/mysql
-  #     # - ./docker/mysql/my.cnf:/etc/mysql/my.cnf # Optional: custom mysql config
-  #   networks:
-  #     - app-network
-  #   healthcheck:
-  #       test: ["CMD", "mysqladmin", "ping", "-p$${DB_PASSWORD:-password}"]
-  #       retries: 3
-  #       timeout: 5s
+  # Database Service (MySQL example - unchanged)
+  db:
+    image: mysql:8.0
+    container_name: laravel_db
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-laravel}
+      MYSQL_USER: ${DB_USERNAME:-sail}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+      MYSQL_ROOT_PASSWORD: "${DB_PASSWORD:-password}"
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$${DB_PASSWORD:-password}"]
+        retries: 3
+        timeout: 5s
+        interval: 10s
 
 # Networks
 networks:
