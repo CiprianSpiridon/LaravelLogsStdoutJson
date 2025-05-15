@@ -9,7 +9,7 @@ This repository has been configured to run the Laravel application using Docker.
 *   **Dockerized Environment**: Uses Docker Compose with services for the PHP application (FPM), Nginx web server, and MySQL database.
     *   Custom `Dockerfile` located in `./docker/Dockerfile`.
     *   Nginx configuration in `./docker/nginx/conf.d/app.conf`.
-    *   PHP custom settings can be placed in `./docker/php/local.ini`.
+    *   PHP custom settings in `./docker/php/local.ini` (configured to direct PHP native errors to stderr).
 *   **JSON Logging to stdout**: Laravel's logging is configured to output all logs (including exceptions with stack traces) as single-line JSON to `stdout`.
     *   The custom logging channel `stdout_json` is defined in `config/logging.php`.
     *   The logic for this channel is in `app/Logging/CreateJsonStdoutLogger.php`.
